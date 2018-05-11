@@ -1,7 +1,17 @@
 package com.example.lenovocom.mismap;
 
+import android.Manifest;
+import android.annotation.SuppressLint;
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.location.Criteria;
+import android.location.Location;
+import android.location.LocationManager;
 import android.preference.PreferenceManager;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.os.Bundle;
 import android.view.View;
@@ -10,6 +20,7 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.OnMapReadyCallback;
@@ -32,12 +43,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     Button poly;
     public String etString;
     ArrayList<Marker> markers = new ArrayList<Marker>();
+    private LocationManager locationManager;
+    private int savedMarker = 0;
+    private SharedPreferences sharedPreferences;
+    public String bestProvider;
+    public Criteria criteria;
 
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_maps);
+        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         bindViews();
 
     }
@@ -46,14 +63,23 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         editText = (EditText) findViewById(R.id.et);
         save = (Button) findViewById(R.id.save);
         poly = (Button) findViewById(R.id.poly);
+        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+
+        setUpMap();
 
 
-        SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
-                .findFragmentById(R.id.map);
-
-        mapFragment.getMapAsync(this);
     }
 
+    private void setUpMap() {
+        if (mMap == null) {
+            SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
+                    .findFragmentById(R.id.map);
+            mapFragment.getMapAsync(this);
+
+        }
+
+
+    }
 
     @Override
     public void onMapReady(GoogleMap googleMap) {
@@ -61,18 +87,93 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         mMap.getUiSettings().setZoomControlsEnabled(true);
         mMap.getUiSettings().setCompassEnabled(true);
+        CameraUpdate zoom=CameraUpdateFactory.zoomTo(100);
 
-        Toast.makeText(this, "fill edit text then long click", Toast.LENGTH_LONG).show();
+        save.setOnClickListener(this);
 
 
-        LatLng begin = new LatLng(50.980862, 11.332365);
-       // mMap.addMarker(new MarkerOptions().position(begin).title("Marker"));
-        mMap.moveCamera(CameraUpdateFactory.newLatLng(begin));
+        Toast.makeText(this, "fill edit text and save it, then long click", Toast.LENGTH_LONG).show();
         mMap.setOnMapLongClickListener(this);
 
         poly.setOnClickListener(this);
 
+        if (savedMarker > 0) {
+            loadMarkers();
+        }
 
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            ActivityCompat.requestPermissions(this,new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 1);
+            return;
+
+        }
+        criteria = new Criteria();
+        bestProvider = String.valueOf(locationManager.getBestProvider(criteria, true)).toString();
+
+        Location location = locationManager.getLastKnownLocation(bestProvider);
+
+        LatLng begin = new LatLng(location.getLatitude(), location.getLongitude());
+        // mMap.addMarker(new MarkerOptions().position(begin).title("Marker"));
+        mMap.animateCamera(zoom);
+        mMap.moveCamera(CameraUpdateFactory.newLatLng(begin));
+
+
+
+    }
+
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == 1) {
+            if (grantResults.length == 1
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                //@SuppressLint("MissingPermission") Location location = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
+
+                //LatLng begin = new LatLng(location.getLatitude(), location.getLongitude());
+                // mMap.addMarker(new MarkerOptions().position(begin).title("Marker"));
+                //mMap.moveCamera(CameraUpdateFactory.newLatLng(begin));
+            }
+        }
+    }
+
+    @Override
+    public void onSaveInstanceState(Bundle savedInstanceState) {
+        super.onSaveInstanceState(savedInstanceState);
+        // Save the number of markers
+        savedInstanceState.putInt("SavedMarker", savedMarker);
+    }
+
+    @Override
+    public void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        // Restore number of markers
+        savedMarker = savedInstanceState.getInt("SavedMarker");
+        //setUpMap();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        setUpMap();
+    }
+
+    private void loadMarkers(){
+
+        for(int i= 0 ; i<savedMarker ; i++){
+            double lat = Double.parseDouble(sharedPreferences.getString(i + "-latitude",""));
+            double lon = Double.parseDouble(sharedPreferences.getString(i + "-longitude",""));
+            String title = sharedPreferences.getString(i + "-title","");
+            try {
+                markers.add(mMap.addMarker(new MarkerOptions().position(new LatLng(lat, lon)).title(title)));
+            } catch (Exception e) {
+            }
+        }
     }
 
     @Override
@@ -80,14 +181,18 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
         save.setOnClickListener(this);
 
-
-        PreferenceManager.getDefaultSharedPreferences(this).edit().
-                putString(latLng.toString(), etString).apply();
-
         Marker marker = mMap.addMarker(new MarkerOptions().position(latLng).title(PreferenceManager.getDefaultSharedPreferences(this).
-                getString(latLng.toString(), "def val")));
+                getString(latLng.toString(), etString)));
         markers.add(marker);
-        //Toast.makeText(this, markers.size(), Toast.LENGTH_SHORT).show();
+
+        SharedPreferences.Editor editor = sharedPreferences.edit();
+        editor.putString(savedMarker + "-latitude", Double.toString(latLng.latitude));
+        editor.putString(savedMarker + "-longitude", Double.toString(latLng.longitude));
+        editor.putString(savedMarker + "-title", etString);
+        editor.commit();
+
+        savedMarker++;
+
 
 
     }
@@ -102,6 +207,9 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
 
         } else if (view.getId() == R.id.poly) {
+            if(poly.getText().equals("End Polygon"))
+                return;
+
             poly.setText("End Polygon");
             PolygonOptions polygonOptions = new PolygonOptions()
                     .strokeColor(Color.BLACK).strokeWidth(4)
